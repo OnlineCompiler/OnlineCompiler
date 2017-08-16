@@ -4,7 +4,7 @@
 #include <sys/stat.h>
 
 //打印日志
-void print_log(char* error, int level, char* file, int line)
+void print_log(const char* error, int level, const char* file, int line)
 {
 	time_t now; //当前时间戳
 	time(&now);
@@ -111,7 +111,7 @@ static ssize_t read_line(int sock, char* buf, size_t size)
 	ssize_t s = 0; //recv ret
 	char c = 0;
 
-	while(i < size - 1 && c != '\n')
+	while(i < (ssize_t)size - 1 && c != '\n')
 	{
 		s = recv(sock, &c, 1, 0);
 		//  \r和\r\n -> \n

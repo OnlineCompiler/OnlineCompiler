@@ -1,16 +1,16 @@
 #/bin/bash/
 
-#控制httpd启停的控制脚本
+#控制http_server启停的控制脚本
 
 ROOT_PATH=$(pwd)
-BIN=${ROOT_PATH}/httpd
+BIN=${ROOT_PATH}/bin/http_server
 CONF=${ROOT_PATH}/conf/httpd.conf
 BIN_NAME=`basename $BIN`
 
 ctl=$(basename $0)
 function Usage()
 {
-	printf "Usage: %s start(-s | -S) | stop (-t | -T) | restart(-r | -R)\n" "${ctl}"
+	printf "Usage: %s start(-s) | stop (-t) | restart(-rs)\n" "${ctl}"
 }
 
 function Start()
@@ -20,8 +20,11 @@ function Start()
 		printf "start failed!!! http is runing, pid is $pid.\n"
 		return
 	fi
+	ip=$(grep -E 'IP:' $CONF | awk -F: '{print $2}')
 	port=$(grep -E 'PORT:' $CONF | awk -F: '{print $2}')
-	$BIN $port
+	cnt=$(grep -E '^CNT' $CONF | awk -F: '{print $2}')
+	proccnt=$(grep -E '^PROCCNT' $CONF | awk -F: '{print $2}')
+	$BIN $ip $port $cnt $proccnt
 	pid=`pidof $BIN_NAME`
 	printf "start success!!! pid is $pid\n"
 }
@@ -35,7 +38,6 @@ function Stop()
 	fi
 	
 	killall $BIN_NAME
-	rm -f ./log/httpd.log
 	printf "stop success!!! httpd is stoped. pid is $pid\n"
 }
 
@@ -47,13 +49,13 @@ fi
 
 
 case $1 in
-	start | -s | -S)
+	start | -s)
 		Start
 	;;
-	stop | -t | -T)
+	stop | -t)
 		Stop
 	;;
-	restart | -r | -R)
+	restart | -rs)
 		Stop
 		Start
 	;;
@@ -62,4 +64,3 @@ case $1 in
 		exit 2
 	;;
 esac
-	

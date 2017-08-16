@@ -23,5 +23,5 @@ enum LEVEL
 };
 
 int startup(int port);
-void print_log(char* error, int level, char* file, int line);
+void print_log(const char* error, int level, const char* file, int line);
 int request_handle(int sock);
