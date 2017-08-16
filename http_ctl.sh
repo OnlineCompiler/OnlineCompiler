@@ -10,14 +10,14 @@ BIN_NAME=`basename $BIN`
 ctl=$(basename $0)
 function Usage()
 {
-	printf "Usage: %s start(-s) | stop (-t) | restart(-rs)\n" "${ctl}"
+	printf "Usage: %s start(-s | -S) | stop (-t | -T) | restart(-r | -R)\n" "${ctl}"
 }
 
 function Start()
 {
 	pid=`pidof $BIN_NAME`
 	if [ $? -eq 0 ]; then
-		printf "start failed!!! http is runing, pid is $pid.\n"
+		printf "start failed! http is already running, pid is $pid.\n"
 		return
 	fi
 	ip=$(grep -E 'IP:' $CONF | awk -F: '{print $2}')
@@ -26,19 +26,19 @@ function Start()
 	proccnt=$(grep -E '^PROCCNT' $CONF | awk -F: '{print $2}')
 	$BIN $ip $port $cnt $proccnt
 	pid=`pidof $BIN_NAME`
-	printf "start success!!! pid is $pid\n"
+	printf "start success! pid is $pid\n"
 }
 
 function Stop()
 {
 	pid=`pidof $BIN_NAME`
 	if [ $? -ne 0 ]; then
-		printf "stop failed!!! No httpd is runing.\n"
+		printf "stop failed! No httpd is running.\n"
 		return
 	fi
 	
 	killall $BIN_NAME
-	printf "stop success!!! httpd is stoped. pid is $pid\n"
+	printf "stop success! httpd is stoped. pid is $pid\n"
 }
 
 #检查命令行参数
@@ -49,13 +49,13 @@ fi
 
 
 case $1 in
-	start | -s)
+	start | -s | -S)
 		Start
 	;;
-	stop | -t)
+	stop | -t | -T)
 		Stop
 	;;
-	restart | -rs)
+	restart | -r | -R)
 		Stop
 		Start
 	;;
