@@ -20,9 +20,8 @@ function Start()
 		printf "start failed!!! http is runing, pid is $pid.\n"
 		return
 	fi
-	ip=$(grep -E 'IP:' $CONF | awk -F: '{print $2}')
 	port=$(grep -E 'PORT:' $CONF | awk -F: '{print $2}')
-	$BIN $ip $port
+	$BIN $port
 	pid=`pidof $BIN_NAME`
 	printf "start success!!! pid is $pid\n"
 }
