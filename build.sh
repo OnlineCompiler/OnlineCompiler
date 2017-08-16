@@ -1,2 +1,2 @@
 #!/bin/bash
-cd src;make release
+cd src; make clean; make release;
