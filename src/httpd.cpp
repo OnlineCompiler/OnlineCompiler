@@ -10,7 +10,6 @@ void print_log(const char* error, int level, const char* file, int line)
 	time(&now);
 	struct tm* timenow = localtime(&now);
 
-	//openprint_log sysprint_log closeprint_log
 	const char* log_level[5] = {"SUCCESS", "NOTICE", "WARNING", "ERROR", "FATAL"};
 	int fd = open("log/httpd.log", O_CREAT|O_WRONLY|O_APPEND, S_IWUSR|S_IRUSR);
 	char buf[1024];
@@ -48,13 +47,29 @@ static void status_code(int sock, int status)
 
 	char buf[SIZE/8];
 	sprintf(buf, "HTTP/1.0 %d %s\r\n", status, reason);
-	send(sock, buf, strlen(buf), 0);
+	if(send(sock, buf, strlen(buf), 0) < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return;
+	}
 	const char* head = "Content-Type: text/html\r\n";
-	send(sock, head, strlen(head), 0);
-	send(sock, "\r\n", 2, 0);
+	if(send(sock, head, strlen(head), 0) <0 )
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return;
+	}
+	if(send(sock, "\r\n", 2, 0) < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return;
+	}
 	sprintf(buf, "<html><head><title>%d %s</title></head><body><h2><center>%d %s</center></h2><hr/></body></html>", 
 				status, reason, status, reason);
-	send(sock, buf, strlen(buf), 0);
+	if(send(sock, buf, strlen(buf), 0) < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return;
+	}
 }
 
 static ssize_t read_line(int sock, char* buf, size_t size);
@@ -66,7 +81,8 @@ static void clear_header(int sock)
 
 	do{
 		size = read_line(sock, buf, SIZE);
-	}while(size != 1 || strcmp(buf, "\n") != 0);
+	}while(size > 0 && strcmp("\n", buf));
+	//while(size > 1 || strcmp(buf, "\n")); // bug:没读到\n就一直读有bug，可能请求头里没\n
 }
 
 //启动服务
@@ -105,27 +121,39 @@ int startup(int port)
 }
 
 //读取请求行报头行
-static ssize_t read_line(int sock, char* buf, size_t size)
+static ssize_t read_line(int sock, char *buf, size_t len)
 {
-	ssize_t i = 0; //ret
-	ssize_t s = 0; //recv ret
-	char c = 0;
+	ssize_t i = 0;
+	char c = '\0';
+	ssize_t n;
 
-	while(i < (ssize_t)size - 1 && c != '\n')
+	while ((i < (ssize_t)len - 1) && (c != '\n'))
 	{
-		s = recv(sock, &c, 1, 0);
-		//  \r和\r\n -> \n
-		if(s > 0 && c == '\r')
-		{
-			s = recv(sock, &c, 1, MSG_PEEK);
-			if(s > 0 && c == '\n')
-			  recv(sock, &c, 1, 0);
-			else
-			  c = '\n';
+		n = recv(sock, &c, 1, 0);
+		if (n > 0)
+		 {
+			 // Window:\r\n  Linux:\n  Mac:\r
+			if (c == '\r') 
+			{
+				n = recv(sock, &c, 1, MSG_PEEK);
+				if ((n > 0) && (c == '\n'))
+					recv(sock, &c, 1, 0);
+				else
+					c = '\n';
+			}
+			buf[i++] = c;
 		}
-		buf[i++] = c;
+		else if(n == 0)
+		{
+			break;  //接收失败,直接跳出循环
+		}
+		else
+		{
+			print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+			return -1;
+		}
 	}
-
+	
 	buf[i] = '\0';
 	return i;
 }
@@ -152,10 +180,22 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 
 	//发送应答头部
 	const char* respond_line = "HTTP/1.0 200 OK\r\n";
-	send(sock, respond_line, strlen(respond_line), 0);
+	if(send(sock, respond_line, strlen(respond_line), 0) <= 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return 1;
+	}
 	const char* content_type = "Content-Type: text/html;charset=UTF-8\r\n";
-	send(sock, content_type, strlen(content_type), 0);
-	send(sock, "\r\n", 2, 0);
+	if(send(sock, content_type, strlen(content_type), 0) <= 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return 2;
+	}
+	if(send(sock, "\r\n", 2, 0) <= 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		return 3;
+	}
 
 	//socketpair进行双向通信
 	int sv[2];
@@ -182,6 +222,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 		//文件描述符重定向
 		dup2(sv[1], 1);
 		dup2(sv[1], 0);
+		dup2(sv[1], 2); //处理错误信息要用
 		//环境变量传递参数
 		//1.方便解析字符串2.传送数据量少3.exec后的进程仍然可以看到
 		sprintf(method_env, "METHOD=%s", method);
@@ -200,7 +241,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 
 		//程序替换
 		execl(path, path, NULL);
-		print_log("execl is error", FATAL, __FILE__, __LINE__);
+		print_log("execl failed", FATAL, __FILE__, __LINE__);
 		exit(6);
 	}
 	else //father
@@ -211,20 +252,20 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 		if(strcasecmp(method, "POST") == 0)
 		{
 			//从消息正文读 可能buf存不下
-			if(recv(sock, buf, content_len, 0) < 0)
-			  print_log("recv failed", FATAL, __FILE__, __LINE__);
+			if(recv(sock, buf, content_len, 0) <= 0)
+			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 
 			//写到管道
-			if(write(sv[0], buf, content_len) < 0)
-			  print_log("write failed", FATAL, __FILE__, __LINE__);
+			if(write(sv[0], buf, content_len) <= 0)
+			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		}
 
 		//从管道读取内容发给sock
 		ssize_t s;
 		while((s = read(sv[0], buf, sizeof(buf))) > 0)
 		{
-			if(send(sock, buf, s, 0) < 0)
-			  print_log("send failed", FATAL, __FILE__, __LINE__);
+			if(send(sock, buf, s, 0) <= 0)
+			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		}
 
 		waitpid(-1, NULL, 0);
@@ -238,21 +279,31 @@ static int send_file(int sock, const char* path, ssize_t size)
 	int fd = open(path, O_RDONLY);
 	if(fd < 0)
 	{
-		print_log("open for read file failed", ERROR, __FILE__, __LINE__);
+		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
 		status_code(sock, 404);
 		close(fd);
 		return -1;
 	}
 
-	send(sock, "HTTP/1.0 200 OK\r\n", 17, 0);
-	send(sock, "\r\n", 2, 0);
-
-	if(sendfile(sock, fd, NULL, size) < 0)
+	if(send(sock, "HTTP/1.0 200 OK\r\n", 17, 0) <= 0)
 	{
-		print_log("sendfile failed", ERROR, __FILE__, __LINE__);
-		status_code(sock, 404);
+		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
 		close(fd);
 		return -2;
+	}
+
+	if(send(sock, "\r\n", 2, 0) <= 0) //bug:挂在第二次send
+	{
+		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
+		close(fd);
+		return -3;
+	}
+
+	if(sendfile(sock, fd, NULL, size) <= 0)
+	{
+		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
+		close(fd);
+		return -4;
 	}
 
 	close(fd);
@@ -272,12 +323,11 @@ int request_handle(int sock)
 	int ret = 0;
 
 	ssize_t size = read_line(sock, line, sizeof(line));//读一行
-	if(size == 0)
+	if(size <= 0)
 	{
-		clear_header(sock); //读取失败清理掉header
-		status_code(sock, 400);
 		print_log("request error", ERROR, __FILE__, __LINE__);
-		ret = 1;
+		close(sock);
+		return 1;
 	}
 
 	//读取到第一行，获取请求方法
