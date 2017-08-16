@@ -1,61 +1,56 @@
-/*************************************************************************
-	> File Name: main.c
-	> Author: XH
-	> Mail: X_H_fight@163.com 
-	> Created Time: Sun 02 Apr 2017 02:03:31 PM CST
- ************************************************************************/
+#include <pthread.h>
+#include "httpd.h"
 
-#include"httpd.h"
-
-
-static void Usage(const char *msg)
+void* accept_request(void* arg)
 {
-	assert(msg);
-	printf("Usage: %s [local_ip] [local_port]", msg);
-}
-
-static void *AcceptRequest(void *arg)
-{
-	int sock = (int)arg;
+	int sock = *(int*)arg;
+	//线程分离,无需主线程等待
 	pthread_detach(pthread_self());
-	return (void *)Handle_Request(sock);
+	return (void*)request_handle(sock);
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
-	if(argc != 3)
+	//先从配置文件读
+	
+	int listen_sock;
+	if(argc == 2)
+	  listen_sock = startup(atoi(argv[1]));
+	else if(argc == 1)
+	  ;
+		//使用默认端口
+	else
 	{
-		Usage(argv[0]);
-		exit(1);
+		printf("Usage: %s [listen port]\n", argv[0]);
+		exit(0);
 	}
-	int listen_sock = StartUp(argv[1], atoi(argv[2]));
 
-	daemon(1, 0);
-	/*daemon：
-	 * 第一个参数为0的话，会改变守护进程的目录。
-	 * 如果设为0，服务器目录改变，而wwwRoot并没有发生改变，就会出现一直连不上的情况。
-	 */
-	struct sockaddr_in peer;
-	socklen_t len = sizeof(peer);
+	daemon(1, 0);//守护进程
+	//第一个参数为0工作目录更改为根目录/
+	//第二个参数为0默认打开的三个文件描述符重定向到/dev/null
+	
+	struct sockaddr_in remote;
+	socklen_t len = sizeof(remote);
+
 	while(1)
 	{
-		int conn_sock = accept(listen_sock, (struct sockaddr*)&peer, &len);
+		int conn_sock = accept(listen_sock, (struct sockaddr*)&remote, &len);
 		if(conn_sock < 0)
 		{
-			PrintLog("accept is failed!\n", WARNING);
+			print_log(strerror(errno), WARNING, __FILE__, __LINE__);
 			continue;
 		}
+		//printf("New Connection! %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
 
-		//创建连接成功
-		//创建线程，利用线程来分别处理每个连接
-		pthread_t tid; 
-		if(pthread_create(&tid, NULL, AcceptRequest, (void*)conn_sock) != 0)
+		pthread_t id;
+		void* arg = malloc(sizeof(int));
+		*(int*)arg = conn_sock;
+		if(pthread_create(&id, NULL, accept_request, arg) != 0)
 		{
-			//创建线程失败
-			PrintLog("pthread_create is failed", FATAL);
+			print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 			close(conn_sock);
 		}
 	}
-	close(listen_sock);
+
 	return 0;
 }

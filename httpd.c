@@ -1,384 +1,356 @@
-/*************************************************************************
-	> File Name: httpd.c
-	> Author: XH
-	> Mail: X_H_fight@163.com 
-	> Created Time: Sun 02 Apr 2017 02:02:53 PM CST
- ************************************************************************/
 #include "httpd.h"
-
-int StartUp(const char *ip, int port)
-{
-	assert(ip);
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	
-	int opt = 1;
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-	struct sockaddr_in local;
-	local.sin_family = AF_INET;
-	local.sin_port = htons(port);
-	local.sin_addr.s_addr = inet_addr(ip);
-
-	if(bind(sock, (struct sockaddr*)&local, sizeof(local)) < 0)
-	{
-		PrintLog("bind is failed!", FATAL);
-		exit(2);
-	}
-
-	if(listen(sock, 5) < 0)
-	{
-		PrintLog("listen is failed!", FATAL);
-		exit(3);
-	}
-
-	PrintLog("listen is success!", NORMAL);
-	return sock;
-}
+#include <sys/sendfile.h>
+#include <ctype.h>
+#include <sys/stat.h>
 
 //打印日志
-void PrintLog(const char *logMsg, logGrade grade)
+void print_log(char* error, int level, char* file, int line)
 {
-	//也可以用守护进程的日志实现：openlog 、syslog 、closelog
-	assert(logMsg);
-	const char *arr[10] = {"NORMAL", "WARNING", "FATAL"};
-		
-	int fd = open("./log/httpd.log",\
-			O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR);
+	time_t now; //当前时间戳
+	time(&now);
+	struct tm* timenow = localtime(&now);
+
+	//openprint_log sysprint_log closeprint_log
+	const char* log_level[5] = {"SUCCESS", "NOTICE", "WARNING", "ERROR", "FATAL"};
+	int fd = open("log/httpd.log", O_CREAT|O_WRONLY|O_APPEND, S_IWUSR|S_IRUSR);
 	char buf[1024];
-	sprintf(buf, "LogMsg:%s,%s\n", logMsg, arr[grade]);
+	sprintf(buf, "[%s] %s\t\t%s(%d): %s\n", log_level[level], asctime(timenow), file, line, error);
 	write(fd, buf, strlen(buf));
 	close(fd);
 }
 
-//从sock中读取一行
-static int ReadLine(int sock, char *buf, size_t len)
+//返回状态码
+static void status_code(int sock, int status)
 {
-	assert(buf);
-	int n = 0;
+	const char* reason;//状态码描述
+	switch(status)
+	{
+		case 400:
+			reason = "Bad Request";
+			break;
+		case 403:
+			reason = "Forbidden";
+			break;
+		case 404:
+			reason = "Not Found";
+			break;
+		case 500:
+			reason = "Internal Server Error";
+			break;
+		case 503:
+			reason = "Server Unavailable";
+			break;
+		default:
+			print_log("status code error", WARNING, __FILE__, __LINE__);
+			reason = "Internal Server Error";
+			break;
+	}
+
+	char buf[SIZE/8];
+	sprintf(buf, "HTTP/1.0 %d %s\r\n", status, reason);
+	send(sock, buf, strlen(buf), 0);
+	const char* head = "Content-Type: text/html\r\n";
+	send(sock, head, strlen(head), 0);
+	send(sock, "\r\n", 2, 0);
+	sprintf(buf, "<html><head><title>%d %s</title></head><body><h2><center>%d %s</center></h2><hr/></body></html>", 
+				status, reason, status, reason);
+	send(sock, buf, strlen(buf), 0);
+}
+
+static ssize_t read_line(int sock, char* buf, size_t size);
+//清除消息报头
+static void clear_header(int sock)
+{
+	char buf[SIZE];
+	ssize_t size = 0;
+
+	do{
+		size = read_line(sock, buf, SIZE);
+	}while(size != 1 || strcmp(buf, "\n") != 0);
+}
+
+//启动服务
+int startup(int port)
+{
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		exit(1);
+	}
+
+	int opt = 1;
+	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+	  print_log(strerror(errno), WARNING, __FILE__, __LINE__);
+
+	struct sockaddr_in local;
+	local.sin_family = AF_INET;
+	local.sin_addr.s_addr = inet_addr("0");
+	local.sin_port = htons(port);
+
+	if(bind(sock, (struct sockaddr*)&local, sizeof(local)) < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		exit(2);
+	}
+
+	if(listen(sock, 10) < 0)
+	{
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+		exit(3);
+	}
+
+	print_log("listen success", SUCCESS, __FILE__, __LINE__);
+	return sock;
+}
+
+//读取请求行报头行
+static ssize_t read_line(int sock, char* buf, size_t size)
+{
+	ssize_t i = 0; //ret
+	ssize_t s = 0; //recv ret
 	char c = 0;
-	ssize_t s = 0;
-	while(n < len-1 && c != '\n')
+
+	while(i < size - 1 && c != '\n')
 	{
 		s = recv(sock, &c, 1, 0);
-		//  \r和\r\n都是换行
+		//  \r和\r\n -> \n
 		if(s > 0 && c == '\r')
 		{
 			s = recv(sock, &c, 1, MSG_PEEK);
 			if(s > 0 && c == '\n')
-				s = recv(sock, &c, 1, 0);
+			  recv(sock, &c, 1, 0);
 			else
-				c = '\n';
+			  c = '\n';
 		}
-		buf[n++] = c;
+		buf[i++] = c;
 	}
-	buf[n] = '\0';
-	return n;
+
+	buf[i] = '\0';
+	return i;
 }
 
-//清除头部信息
-static void ClearHeader(int sock)
+//处理cgi请求
+static int exec_cgi(int sock, const char* method, const char* path, const char* query)
 {
-	char buf[_SIZE_];
-	int size = 0;
-	
-	do
-	{
-		size = ReadLine(sock, buf, sizeof(buf));
-	}while(size!=1 || strcmp(buf, "\n")!=0);   //注意逻辑
-}
-
-//处理cgi模式的函数
-int ExcuCgi(int sock, const char *method, \
-		const char *path, const char *resource)
-{
-	char methodEnv[_SIZE_/16];
-	char resourceEnv[_SIZE_/4];
-	char contentLengthEnv[_SIZE_/8];
-	//处理http头部信息
-	int contentLength = -1; // 请求正文内容长度--处理粘包问题
-	char buf[_SIZE_/8];
-	if(strcasecmp(method, "GET") == 0)
-	{
-		ClearHeader(sock);
-	}
-	else //POST 
-	{
-		ReadLine(sock, buf, sizeof(buf));
-		if(strncmp(buf, "Content-Length: ", 16) == 0)
-		{
-			contentLength = atoi(buf+16);
-		}
-		ClearHeader(sock);
-	}
+	char method_env[SIZE/16];
+	char query_env[SIZE/2];
+	char content_len_env[SIZE/8];
+	//处理http请求头
+	int content_len = 0;//请求正文长度
+	char buf[SIZE/8];
+	if(strcasecmp(method, "GET")  == 0)
+	  clear_header(sock);
+	else //POST
+		while(read_line(sock, buf, sizeof(buf)) != 1)
+			if(strncasecmp(buf, "Content-Length: ", 16) == 0)
+			{
+				content_len = atoi(buf+16);
+				clear_header(sock);
+				break;
+			}
 
 	//发送应答头部
-	const char* statusLine = "http/1.0 200 ok\r\n";
-	send(sock, statusLine, strlen(statusLine), 0);
-	const char* head = "Content-Type:text/html;charset=ISO-8859-1\r\n";
-	send(sock, head, strlen(head), 0);
-	send(sock, "\r\n", strlen("\r\n"), 0);
+	const char* respond_line = "HTTP/1.0 200 OK\r\n";
+	send(sock, respond_line, strlen(respond_line), 0);
+	const char* content_type = "Content-Type: text/html;charset=UTF-8\r\n";
+	send(sock, content_type, strlen(content_type), 0);
+	send(sock, "\r\n", 2, 0);
 
-	//fork子进程进行程序替换执行文件，利用管道进行进程间通信，传送资源
-	int input[2];
-	int output[2];
-
-	if(pipe(input)<0 || pipe(output)<0)
+	//socketpair进行双向通信
+	int sv[2];
+	if(socketpair(PF_LOCAL, SOCK_STREAM, 0, sv) < 0)
 	{
-		ClearHeader(sock);
-		EchoErrno(sock, 500);
-		PrintLog("ExcuCgi pipe error", FATAL);
-		return 9;
+		status_code(sock, 500);
+		print_log("socketpair", FATAL, __FILE__, __LINE__);
+		return 4;
 	}
-	
+
+	//fork子进程execl
 	pid_t pid = fork();
 	if(pid < 0)
 	{
-		ClearHeader(sock);
-		EchoErrno(sock, 500);
-		PrintLog("ExcuCgi fork error", FATAL);
-		return 10;
+		status_code(sock, 500);
+		print_log("fork", FATAL, __FILE__, __LINE__);
+		return 5;
 	}
-	else if(pid == 0)  //child
+	else if(pid == 0) //child
 	{
-		//关闭对应管道
-		close(input[1]);
-		close(output[0]);
-		close(sock); //子进程中的sock没有用了，关闭掉，防止错误写入。
-
+		//关闭不用的fd
+		close(sock);
+		close(sv[0]);
 		//文件描述符重定向
-		dup2(input[0], 0);
-		dup2(output[1], 1);
+		dup2(sv[1], 1);
+		dup2(sv[1], 0);
+		//环境变量传递参数
+		//1.方便解析字符串2.传送数据量少3.exec后的进程仍然可以看到
+		sprintf(method_env, "METHOD=%s", method);
+		putenv(method_env);
 
-		//通过环境变量传递参数，不用管道因为1.要对字符串提取2.传送数据量少
-		//程序替换只替换目标文件的代码和数据，不会影响环境变量。环境变量的继承特征
-
-		sprintf(methodEnv, "METHOD=%s", method);
-		putenv(methodEnv);
 		if(strcasecmp(method, "GET") == 0)
 		{
-			sprintf(resourceEnv, "RESOURCE=%s", resource);
-			putenv(resourceEnv);
+			sprintf(query_env, "QUERY=%s", query);
+			putenv(query_env);
 		}
 		else //POST
 		{
-			sprintf(contentLengthEnv, "CONTENTLENGTH=%d", contentLength);
-			putenv(contentLengthEnv);
+			sprintf(content_len_env, "CONTENTLENGTH=%d", content_len);
+			putenv(content_len_env);
 		}
 
 		//程序替换
 		execl(path, path, NULL);
-		PrintLog("execl is error", FATAL);
-		exit(1);
+		print_log("execl is error", FATAL, __FILE__, __LINE__);
+		exit(6);
 	}
-	else  //father
+	else //father
 	{
-		//关闭对应管道
-		close(input[0]);
-		close(output[1]);
-		
+		close(sv[1]);
 		//读取POST方法正文内容通过管道发送给子进程
-		char c = '\0';
+		char buf[content_len+1];
 		if(strcasecmp(method, "POST") == 0)
 		{
-			int i = 0;
-			for( ; i < contentLength; ++i)
-			{
-				recv(sock, &c, 1, 0);
-				write(input[1], &c, 1);
-			}
+			//从消息正文读 可能buf存不下
+			if(recv(sock, buf, content_len, 0) < 0)
+			  print_log("recv failed", FATAL, __FILE__, __LINE__);
+
+			//写到管道
+			if(write(sv[0], buf, content_len) < 0)
+			  print_log("write failed", FATAL, __FILE__, __LINE__);
 		}
 
-		//从管道中读取内容发送给sock
-		while(read(output[0], &c, 1) > 0)
+		//从管道读取内容发给sock
+		ssize_t s;
+		while((s = read(sv[0], buf, sizeof(buf))) > 0)
 		{
-			send(sock, &c, 1, 0);
+			if(send(sock, buf, s, 0) < 0)
+			  print_log("send failed", FATAL, __FILE__, __LINE__);
 		}
-		waitpid(pid, NULL , 0);
-	}
 
+		waitpid(-1, NULL, 0);
+	}
+	return 0;
 }
 
-void EchoErrno(int sock, int statusCode)
-{
-	const char *filename; 
-	const char *reasonPhrase;//状态码描述
-	switch(statusCode)
-	{
-		case 400:
-			filename = "/errno/errno400.html";
-			reasonPhrase = "Bad Request";
-			break;
-		case 403:
-			filename = "/errno/errno403.html";
-			reasonPhrase = "Forbidden";
-			break;
-		case 404:
-			filename = "/errno/errno404.html";
-			reasonPhrase = "Not Found";
-			break;
-		case 500:
-			filename = "/errno/errno500.html";
-			reasonPhrase = "Internal Server Error";
-			break;
-		case 503:
-			filename = "/errno/errno503.html";
-			reasonPhrase = "Server Unavailable";
-			break;
-		default:
-			PrintLog("应答状态码可能异常", WARNING);
-			filename = "/errno/errno500.html";
-			reasonPhrase = "Internal Server Error";
-			break;
-	}
-
-	struct stat st;
-	stat(filename, &st);
-	int fd = open(filename, O_RDONLY);
-	char buf[_SIZE_];
-
-	sprintf(buf, "HTTP/1.0 %d %s\r\n", statusCode, reasonPhrase);
-	send(sock, buf, strlen(buf), 0);
-	const char* head = "Content-Type: text/html";
-	send(sock, head, strlen(head), 0);
-	send(sock, "\r\n", strlen("\r\n"), 0);
-	sendfile(sock, fd, NULL, st.st_size);
-	close(fd);
-}
-
-//非cgi模式：将指定路径文件发送给客户端
-int ShowPage(int sock, const char *path, ssize_t size)
-{
-	int fd = open(path, O_RDONLY);	
+//发送普通文件
+static int send_file(int sock, const char* path, ssize_t size)
+{	
+	int fd = open(path, O_RDONLY);
 	if(fd < 0)
 	{
-		PrintLog("open file failed", FATAL);
-		EchoErrno(sock, 404);
-		return 7;
+		print_log("open for read file failed", ERROR, __FILE__, __LINE__);
+		status_code(sock, 404);
+		close(fd);
+		return -1;
 	}
-	char buf[_SIZE_];
-	sprintf(buf, "HTTP/1.0 200 OK\r\n");
-	send(sock, buf, strlen(buf), 0);
-	send(sock, "\r\n", strlen("\r\n"), 0);
+
+	send(sock, "HTTP/1.0 200 OK\r\n", 17, 0);
+	send(sock, "\r\n", 2, 0);
+
 	if(sendfile(sock, fd, NULL, size) < 0)
 	{
-		EchoErrno(sock, 404);
-		PrintLog("send file failed", FATAL);
+		print_log("sendfile failed", ERROR, __FILE__, __LINE__);
+		status_code(sock, 404);
 		close(fd);
-		return 8;
+		return -2;
 	}
+
 	close(fd);
 	return 0;
 }
 
-int Handle_Request(int sock)
-{
-	char line[_SIZE_]; //存储一行的内容
-	char *c = line;
-	char method[64]; //存储请求方法
-	char url[_SIZE_];
-	char *resource = NULL; //指向GET方法的资源
-	char path[_SIZE_]; //存储
-	int ret = 0;
-	int i = 0; //下标标记
+
+int request_handle(int sock)
+{	
+	char line[SIZE]; //存储一行内容
+	char* c = line;
+	char method[8]; //存储请求方法 
+	char url[SIZE];
+	char path[SIZE]; //请求路径
+	char* query_str = NULL; //指向GET方法的参数
 	int cgi = 0; //是否为cgi模式
-	int size = ReadLine(sock, line, sizeof(line));
+	int ret = 0;
+
+	ssize_t size = read_line(sock, line, sizeof(line));//读一行
 	if(size == 0)
 	{
-		ClearHeader(sock);
-		EchoErrno(sock, 400);
-		PrintLog("request is error", FATAL);
-		ret = 4;
-		goto END;
+		clear_header(sock); //读取失败清理掉header
+		status_code(sock, 400);
+		print_log("request error", ERROR, __FILE__, __LINE__);
+		ret = 1;
 	}
-	
-	//得到第一行
-	//获取请求方法
-	while(i <64 && *c != ' ')
-	{
+
+	//读取到第一行，获取请求方法
+	int i = 0;
+	while(i < 8 && !isblank(*c))
 		method[i++] = *c++;
-	}
-	method[i] = 0;
-	//获取request-url
-	++c;
+	method[i] = '\0';
+
+	//获取url
+	c++;
 	i = 0;
-	while(i < _SIZE_ && *c != ' ')
-	{
-		url[i++] = *c++;
-	}
-	url[i] = 0;
-	
+	while(i < SIZE && !isblank(*c))
+	  url[i++] = *c++;
+	url[i] = '\0';
 
 	//设置cgi模式
-	//1.POST方法肯定为cgi模式，
-	//2.GET方法如果url中有?(即携带资源)则使用cgi模式, 
-	//3.请求路径为可执行文件用cgi模式
+	//1. POST方法肯定是cgi模式
+	//2. GET方法携带参数是cgi模式
+	
 	if(strcasecmp("POST", method) == 0)
-	{
-		cgi = 1;
-	}
+	  cgi = 1;
 	else if(strcasecmp("GET", method) == 0)
 	{
-		resource = url;
-		while(*resource && *resource!='?')
+		query_str = url;
+		while(*query_str && *query_str != '?')
+		  ++query_str;
+		if(*query_str == '?')
 		{
-			++resource;
-		}
-		if(*resource == '?')
-		{
-			//url指向路径，resource指向资源
-			*resource = 0;
-			++resource;
+			*query_str = '\0';
+			++query_str;
 			cgi = 1;
 		}
 	}
-	else //既不是GET方法又不是POST方法的先不处理，直接报错
+	else //既不是GET也不是POST
 	{
-		ClearHeader(sock);
-		EchoErrno(sock, 400);
-		PrintLog("方法既不是GET又不是POST", FATAL);
-		ret = 5;
-		goto END;
-	}
-	//处理请求路径
-	sprintf(path, "wwwroot%s", url);
-	if(path[strlen(path)-1] == '/') //目录
-	{
-		strcat(path, "index.html");
-	}
-	
-	struct stat st;
-	
-	if(stat(path, &st) < 0) //从文件名中获取文件信息保存在stat结构体中。
-	{
-		ClearHeader(sock);
-		EchoErrno(sock, 404);
-		PrintLog("获取path文件信息失败", FATAL);
-		ret = 6;
-		goto END;
-	}
-	//获取path文件信息成功
-	if(S_ISDIR(st.st_mode)) //检查文件是否为目录
-		strcat(path, "/index.html");
-	else if((st.st_mode) & S_IXUSR ||             //检查文件是否为可执行文件
-			(st.st_mode) & S_IXGRP || 
-			(st.st_mode) & S_IXOTH )
-	{
-		cgi = 1;
+		clear_header(sock);
+		status_code(sock, 400);
+		print_log("请求方法未知", WARNING, __FILE__, __LINE__);
+		ret = 2;
 	}
 
-	//处理cgi模式和非cgi模式
-	if(cgi) //cgi
+	//处理请求路径
+	sprintf(path, "wwwroot%s", url);
+	if(path[strlen(path)-1] == '/') //请求path以/结尾是目录
+	  strcat(path, "index.html");
+	
+	struct stat st;
+	//int stat(const char *path, struct stat *buf);
+	if(stat(path, &st) < 0) //获取文件信息保存在stat结构体中
 	{
-		ret = ExcuCgi(sock, method, path, resource);
+		clear_header(sock);
+		status_code(sock, 404);
+		ret = 3;
+		goto END;
 	}
+
+	//获取path文件信息成功
+	if(S_ISDIR(st.st_mode)) //文件是否是目录
+	  strcat(path, "/index.html");
+	//文件是否为可执行文件
+	else if(st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH)
+	  cgi = 1;
+
+	//处理cgi和非cgi模式
+	if(cgi)
+		ret = exec_cgi(sock, method, path, query_str);
 	else
 	{
-		ClearHeader(sock);
-		//对于非cgi模式直接进行相应。
-		ret = ShowPage(sock, path, st.st_size);
+		clear_header(sock);
+		ret = send_file(sock, path, st.st_size);
 	}
 
 END:
 	close(sock);
 	return ret;
 }
-
