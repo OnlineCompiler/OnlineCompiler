@@ -12,9 +12,9 @@ LIB="-lpthread"
 #主Makefile生成httpd
 cat <<EOF > Makefile
 ${SERVER_BIN}:${OBJ}
-	CXX -o \$@ \$^ ${LIB}
+	\$(CXX) -o \$@ \$^ ${LIB}
 %.o:%.c
-	CXX -c \$<
+	\$(CXX) -c \$<
 
 .PHONY:clean
 clean:
@@ -24,9 +24,7 @@ clean:
 release:${SERVER_BIN}
 	mkdir release
 	cp ${SERVER_BIN} release/
-	cp -rf log release/
 	cp -rf conf release/
 	cp -rf wwwroot release/
 	cp -f http_ctl.sh release/ 
 EOF
-
