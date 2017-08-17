@@ -56,7 +56,7 @@ libco-$(version).src.tar.gz:
 
 clean:
 	$(CLEAN) *.o $(PROGS)
-	rm -fr MANIFEST lib solib libco-$(version).src.tar.gz libco-$(version) 
+	rm -fr MANIFEST lib solib libco-$(version).src.tar.gz libco-$(version) ../bin
 .PHONY:release
 release:all
 	@mv lib/ solib/ http_server ../bin

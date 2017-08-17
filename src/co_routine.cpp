@@ -516,7 +516,7 @@ void co_init_curr_thread_env()
 	pid_t pid = GetPid();	
 	g_arrCoEnvPerThread[ pid ] = (stCoRoutineEnv_t*)calloc( 1,sizeof(stCoRoutineEnv_t) );
 	stCoRoutineEnv_t *env = g_arrCoEnvPerThread[ pid ];
-	printf("init pid %ld env %p\n",(long)pid,env);
+	//printf("init pid %ld env %p\n",(long)pid,env);
 
 	env->iCallStackSize = 0;
 	struct stCoRoutine_t *self = co_create_env( env,NULL,NULL );

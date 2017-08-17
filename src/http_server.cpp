@@ -16,11 +16,8 @@
 * limitations under the License.
 */
 
-
-
-#include "co_routine.h"
 #include "httpd.h"
-
+#include "co_routine.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -54,6 +51,7 @@ static int SetNonBlock(int iSock)
     return ret;
 }
 
+//任务协程
 static void *readwrite_routine( void *arg )
 {
 
@@ -74,30 +72,29 @@ static void *readwrite_routine( void *arg )
 
 		for(;;)
 		{
+			//监听fd事件直到发生
 			struct pollfd pf = { 0 };
 			pf.fd = fd;
 			pf.events = (POLLIN|POLLERR|POLLHUP);
 			co_poll( co_get_epoll_ct(),&pf,1,1000);
-			request_handle(fd);	
-			close(fd);
+
+			//处理接收到的连接
+			request_handle(fd);
 			break;
 		}
 
 	}
 	return 0;
 }
+
 int co_accept(int fd, struct sockaddr *addr, socklen_t *len );
 static void *accept_routine( void * )
 {
 	co_enable_hook_sys();
-	printf("accept_routine\n");
-	fflush(stdout);
 	for(;;)
 	{
-		//printf("pid %ld g_readwrite.size %ld\n",getpid(),g_readwrite.size());
 		if( g_readwrite.empty() )
 		{
-			printf("empty\n"); //sleep
 			struct pollfd pf = { 0 };
 			pf.fd = -1;
 			poll( &pf,1,1000);
@@ -178,9 +175,9 @@ static int CreateTcpSocket(const unsigned short shPort /* = 0 */,const char *psz
 	return fd;
 }
 
-
 int main(int argc,char *argv[])
 {
+	//接收四个参数：IP PORT 协程数 进程数
 	const char *ip = argv[1];
 	int port = atoi( argv[2] );
 	int cnt = atoi( argv[3] );
@@ -205,6 +202,7 @@ int main(int argc,char *argv[])
 		}
 		for(int i=0;i<cnt;i++)
 		{
+			//任务协程
 			task_t * task = (task_t*)calloc( 1,sizeof(task_t) );
 			task->fd = -1;
 
@@ -212,6 +210,7 @@ int main(int argc,char *argv[])
 			co_resume( task->co );
 
 		}
+		//accept协程
 		stCoRoutine_t *accept_co = NULL;
 		co_create( &accept_co,NULL,accept_routine,0 );
 		co_resume( accept_co );
