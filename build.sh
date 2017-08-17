@@ -1,2 +1,3 @@
 #!/bin/bash
-cd src; make clean; make release;
+rm -rf log bin; mkdir log bin;
+cd src; make clean; make release; cd -;

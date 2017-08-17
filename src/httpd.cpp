@@ -10,6 +10,7 @@ void print_log(const char* error, int level, const char* file, int line)
 	time(&now);
 	struct tm* timenow = localtime(&now);
 
+	//openprint_log sysprint_log closeprint_log
 	const char* log_level[5] = {"SUCCESS", "NOTICE", "WARNING", "ERROR", "FATAL"};
 	int fd = open("log/httpd.log", O_CREAT|O_WRONLY|O_APPEND, S_IWUSR|S_IRUSR);
 	char buf[1024];
@@ -85,41 +86,6 @@ static void clear_header(int sock)
 	//while(size > 1 || strcmp(buf, "\n")); // bug:没读到\n就一直读有bug，可能请求头里没\n
 }
 
-//启动服务
-int startup(int port)
-{
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	if(sock < 0)
-	{
-		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
-		exit(1);
-	}
-
-	int opt = 1;
-	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-	  print_log(strerror(errno), WARNING, __FILE__, __LINE__);
-
-	struct sockaddr_in local;
-	local.sin_family = AF_INET;
-	local.sin_addr.s_addr = inet_addr("0");
-	local.sin_port = htons(port);
-
-	if(bind(sock, (struct sockaddr*)&local, sizeof(local)) < 0)
-	{
-		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
-		exit(2);
-	}
-
-	if(listen(sock, 10) < 0)
-	{
-		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
-		exit(3);
-	}
-
-	print_log("listen success", SUCCESS, __FILE__, __LINE__);
-	return sock;
-}
-
 //读取请求行报头行
 static ssize_t read_line(int sock, char *buf, size_t len)
 {
@@ -170,7 +136,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 	if(strcasecmp(method, "GET")  == 0)
 	  clear_header(sock);
 	else //POST
-		while(read_line(sock, buf, sizeof(buf)) != 1)
+		while(read_line(sock, buf, sizeof(buf)) > 1)
 			if(strncasecmp(buf, "Content-Length: ", 16) == 0)
 			{
 				content_len = atoi(buf+16);
@@ -202,7 +168,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 	if(socketpair(PF_LOCAL, SOCK_STREAM, 0, sv) < 0)
 	{
 		status_code(sock, 500);
-		print_log("socketpair", FATAL, __FILE__, __LINE__);
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		return 4;
 	}
 
@@ -211,7 +177,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 	if(pid < 0)
 	{
 		status_code(sock, 500);
-		print_log("fork", FATAL, __FILE__, __LINE__);
+		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		return 5;
 	}
 	else if(pid == 0) //child
@@ -220,8 +186,8 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 		close(sock);
 		close(sv[0]);
 		//文件描述符重定向
-		dup2(sv[1], 1);
 		dup2(sv[1], 0);
+		dup2(sv[1], 1);
 		dup2(sv[1], 2); //处理错误信息要用
 		//环境变量传递参数
 		//1.方便解析字符串2.传送数据量少3.exec后的进程仍然可以看到
@@ -241,7 +207,7 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 
 		//程序替换
 		execl(path, path, NULL);
-		print_log("execl failed", FATAL, __FILE__, __LINE__);
+		print_log("execl is error", FATAL, __FILE__, __LINE__);
 		exit(6);
 	}
 	else //father
@@ -252,20 +218,20 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 		if(strcasecmp(method, "POST") == 0)
 		{
 			//从消息正文读 可能buf存不下
-			if(recv(sock, buf, content_len, 0) <= 0)
-			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+			if(recv(sock, buf, content_len, 0) < 0)
+			  print_log("recv failed", FATAL, __FILE__, __LINE__);
 
 			//写到管道
-			if(write(sv[0], buf, content_len) <= 0)
-			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+			if(write(sv[0], buf, content_len) < 0)
+			  print_log("write failed", FATAL, __FILE__, __LINE__);
 		}
 
 		//从管道读取内容发给sock
 		ssize_t s;
 		while((s = read(sv[0], buf, sizeof(buf))) > 0)
 		{
-			if(send(sock, buf, s, 0) <= 0)
-			  print_log(strerror(errno), FATAL, __FILE__, __LINE__);
+			if(send(sock, buf, s, 0) < 0)
+				print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		}
 
 		waitpid(-1, NULL, 0);
@@ -309,7 +275,6 @@ static int send_file(int sock, const char* path, ssize_t size)
 	close(fd);
 	return 0;
 }
-
 
 int request_handle(int sock)
 {	
@@ -365,8 +330,9 @@ int request_handle(int sock)
 	{
 		clear_header(sock);
 		status_code(sock, 400);
-		print_log("请求方法未知", WARNING, __FILE__, __LINE__);
+		print_log("Unknown request method", WARNING, __FILE__, __LINE__); 
 		ret = 2;
+		goto END;
 	}
 
 	//处理请求路径
