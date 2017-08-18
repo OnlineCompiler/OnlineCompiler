@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <stack>
+#include <queue>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -39,6 +40,8 @@ struct task_t
 };
 
 static stack<task_t*> g_readwrite;
+static queue<int> new_conn;  //新连接队列
+
 static int g_listen_fd = -1;
 static int SetNonBlock(int iSock)
 {
@@ -115,14 +118,17 @@ static void *accept_routine( void * )
 			co_poll( co_get_epoll_ct(),&pf,1,1000 );
 			continue;
 		}
+		new_conn.push(fd);
 		if( g_readwrite.empty() )
 		{
-			close( fd );
+			//close( fd );
 			continue;
 		}
-		SetNonBlock( fd );
+		int cur_fd = new_conn.front();
+		new_conn.pop();
+		SetNonBlock( cur_fd );
 		task_t *co = g_readwrite.top();
-		co->fd = fd;
+		co->fd = cur_fd;
 		g_readwrite.pop();
 		co_resume( co->co );
 	}
@@ -188,6 +194,9 @@ int main(int argc,char *argv[])
 
 	SetNonBlock( g_listen_fd );
 
+	//屏蔽信号
+	signal(SIGPIPE, SIG_IGN);
+
 	for(int k=0;k<proccnt;k++)
 	{
 
@@ -200,6 +209,9 @@ int main(int argc,char *argv[])
 		{
 			break;
 		}
+
+		daemon(1, 0); //子进程精灵化
+
 		for(int i=0;i<cnt;i++)
 		{
 			//任务协程
