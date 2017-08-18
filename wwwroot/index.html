@@ -1,8 +1,56 @@
+<!DOCTYPE html>
 <html>
-	<head>
-		<title>httpd server</title>
-	</head>
-	<body>
-		<h2>httpd server</h2>
-	</body>
+<head>
+	<link rel="stylesheet" href="compiler.css" type="text/css" />
+	<link rel="icon" href="favicon.ico" type="image/x-icon" />
+	<script src="jquery.min.js"></script>
+	<script src="compiler.js"></script>
+	<meta charset="UTF-8">
+	<title>C++ 在线编译器</title>
+</head>
+<body>
+<div class="logo-site">
+	<h2 class="site-title">
+		<a href="https://github.com/OnlineCompiler" target="_blank"><img src="imgs/logo.png" title="Online C++ Compiler" alt="Online C++ Compiler" /></a>
+	</h2>
+</div>
+<canvas id="c"></canvas>  
+<div id="primary" class="content-area">
+	<div class="entry-content">
+		<div class="entry-code">
+			<form id="form1" >
+				<div class="code-box">
+					<div class="code-h">输入源代码</div>
+					<textarea title="输入源代码." id=source style="width: 100%" name=source rows=9></textarea>
+				</div>
+			
+				<div class="code-box">	
+					<div class="code-h">编译设置</div>
+					<span class="options">选择标准:&nbsp;&nbsp;
+						<select name=standard>
+							<option value="c98" >C++98</option>
+							<option value="c11" selected>C++11</option>
+						</select>
+					</span>
+					<span class="options">编译选项：&nbsp;
+						<input id=Wall name=Wall type=checkbox checked> 显示所有警告
+						<input id=S name=S type=checkbox> 输出汇编代码
+						<input id=O2 name=O2 type=checkbox> O2优化级别
+					</span>
+					<span class="render">
+						<button id=run type="button">运&nbsp;&nbsp;行</button>
+						<button id=clear type="button">清&nbsp;&nbsp;除</button>
+					</span>
+				</div>
+			</form>
+			
+			<div class="code-box">
+				<div class="code-h">输出结果</div>
+				<textarea id=results style="width: 100%" name=results rows=9></textarea>
+			</div>
+
+		</div> <!-- .entry-code -->
+	</div><!-- .entry-content -->
+</div><!-- .content-area -->
+</body>
 </html>

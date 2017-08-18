@@ -1,0 +1,64 @@
+#primary {
+	width: 99%;
+}
+.entry-title{
+	margin: 0 0 0 20px;
+}
+.entry-code {
+	padding: 10px;
+}
+.code-h {
+	font-size: 15px;
+	font-weight: bold;
+	margin: 0 -30px 5px -30px;
+	padding: 0 0 0 30px;
+	border-left: 5px solid #568abc;
+}
+.code-box  {
+	margin: 20px 10px 10px 0;
+}
+.entry-code textarea {
+	background: #fff;
+	padding: 10px;
+	border: 1px solid #ebebeb;
+}
+.options {
+	background: #f8f8f8;
+	margin: 10px 10px 10px 0;
+	padding: 10px 15px;
+	border: 1px solid #ccc;
+	border-radius: 2px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+.entry-code button {
+	color: #fff;
+	line-height: 37px; 
+	padding: 0 18px;
+	background: #0088cc;
+	border: 1px solid #0088cc;
+	cursor:pointer;
+	border-radius: 2px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+.entry-code button:hover {
+	background: #666;
+	border: 1px solid #555;
+}
+.entry-code select {
+	background: #fff;
+	border: 1px solid #ccc;
+}
+.entry-code p {
+	color: #888;
+	text-indent: 0em;
+	margin: 0 0 5px 0;
+}
+.options_no {
+	display: none;
+}
+#c{
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: -100;
+}
