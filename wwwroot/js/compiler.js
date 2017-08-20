@@ -17,7 +17,9 @@ $.fn.serializeObject = function() {
 };
 
 $(document).ready(function(){
-	$("#run").click(function(){		
+	$("#run").click(function(){	
+		$("#source").text(editor.getValue());
+
 		var jsonStr = JSON.stringify($("#form1").serializeObject());
 		//alert(jsonStr);
 		
@@ -27,33 +29,14 @@ $(document).ready(function(){
 					$("#results").text(responseTxt);
 			}
 		);
-		
-	});
-		
-	$("#clear").click(function(){
-		document.getElementById("source").value="";
-		document.getElementById("results").value="";
-		//document.getElementById("build").innerHTML="";
-	});
-	
-	//textarea支持tab缩进
-	$("textarea").on('keydown',
-		function(e) {
-			if (e.keyCode == 9) {
-				e.preventDefault();
-				var indent = '    ';
-				var start = this.selectionStart;
-				var end = this.selectionEnd;
-				var selected = window.getSelection().toString();
-				selected = indent + selected.replace(/\n/g, '\n' + indent);
-				this.value = this.value.substring(0, start) + selected
-					+ this.value.substring(end);
-				this.setSelectionRange(start + indent.length, start
-					+ selected.length);
-			}
-		}
-	);
 
+	});
+		
+	//$("#clear").click(function(){
+	//	document.getElementById("source").value="";
+	//	document.getElementById("results").value="";
+	//});
+	
 });
 
 $(document).ready(function() {			
