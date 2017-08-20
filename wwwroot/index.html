@@ -1,17 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<link rel="stylesheet" href="compiler.css" type="text/css" />
-	<link rel="icon" href="favicon.ico" type="image/x-icon" />
-	<script src="jquery.min.js"></script>
-	<script src="compiler.js"></script>
+	<link rel="icon" href="favicon.ico" type="image/x-icon">
 	<meta charset="UTF-8">
 	<title>C++ 在线编译器</title>
+	<script src="js/jquery.min.js"></script>
+
+	<link rel="stylesheet" href="css/compiler.css" type="text/css">
+	<script src="js/compiler.js"></script>
+
+	<link rel="stylesheet" href="css/codemirror.min.css" type="text/css">
+	<script src="js/codemirror.min.js"></script>
+	<script src="js/clike.js"></script>
+	<script src="js/matchbrackets.js"></script>
+
+	<link rel="stylesheet" href="css/show-hint.css" type="text/css">	
+	<script src="js/show-hint.js"></script>
+	<script src="js/anyword-hint.js"></script>
+	
+	<style>
+	.CodeMirror {
+		height: 290px;
+	}
+	</style>
 </head>
 <body>
 <div class="logo-site">
 	<h2 class="site-title">
-		<a href="https://github.com/OnlineCompiler" target="_blank"><img src="imgs/logo.png" title="Online C++ Compiler" alt="Online C++ Compiler" /></a>
+		<a href="https://github.com/OnlineCompiler" target="_blank"><img src="imgs/logo.png" title="C++ Online Compiler" alt="C++ Online Compiler" /></a>
 	</h2>
 </div>
 <canvas id="c"></canvas>  
@@ -19,10 +35,6 @@
 	<div class="entry-content">
 		<div class="entry-code">
 			<form id="form1" >
-				<div class="code-box">
-					<div class="code-h">输入源代码</div>
-					<textarea title="输入源代码." id=source style="width: 100%" name=source rows=9></textarea>
-				</div>
 			
 				<div class="code-box">	
 					<div class="code-h">编译设置</div>
@@ -39,18 +51,42 @@
 					</span>
 					<span class="render">
 						<button id=run type="button">运&nbsp;&nbsp;行</button>
-						<button id=clear type="button">清&nbsp;&nbsp;除</button>
+						<!--<button id=clear type="button">清&nbsp;&nbsp;除</button>-->
 					</span>
 				</div>
+
+				<div class="code-box" style="width: 55%;float: left">
+					<div class="code-h">输入源代码</div>
+					<textarea title="输入源代码." id=source style="width: 100%" name=source>#include <iostream>
+using namespace std;
+				
+int main()
+{
+	cout << "Hello World!";
+	return 0;
+}</textarea>
+				</div>
 			</form>
-			
-			<div class="code-box">
+	
+			<div class="code-box"style="width: 40%;float: right">
 				<div class="code-h">输出结果</div>
-				<textarea id=results style="width: 100%" name=results rows=9></textarea>
+				<textarea id=results style="width: 100% " name=results rows=18>Hello World!</textarea>
 			</div>
 
 		</div> <!-- .entry-code -->
 	</div><!-- .entry-content -->
 </div><!-- .content-area -->
+<script>
+var editor = CodeMirror.fromTextArea(document.getElementById("source"), {
+	lineNumbers: true,//行号
+	matchBrackets: true, //匹配括号
+	mode: "text/x-c++src",
+	indentUnit: 4,//缩进空格
+	indentWithTabs: true,
+	lineWrapping: true,
+	scrollbarStyle: null,
+	extraKeys:{"Alt": "autocomplete"}
+});
+</script>
 </body>
 </html>
