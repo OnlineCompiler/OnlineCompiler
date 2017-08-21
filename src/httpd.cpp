@@ -109,11 +109,11 @@ static ssize_t read_line(int sock, char *buf, size_t len)
 			}
 			buf[i++] = c;
 		}
-		else if(n == 0)
+		else if(n == 0)//对端关闭
 		{
-			break;  //接收失败,直接跳出循环
+			break;  //直接跳出循环
 		}
-		else
+		else //recv失败
 		{
 			print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 			return -1;
@@ -146,18 +146,17 @@ static int exec_cgi(int sock, const char* method, const char* path, const char* 
 
 	//发送应答头部
 	const char* respond_line = "HTTP/1.0 200 OK\r\n";
-	if(send(sock, respond_line, strlen(respond_line), 0) <= 0)
+	if(send(sock, respond_line, strlen(respond_line), 0) < 0)
 	{
 		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		return 1;
 	}
 	const char* content_type = "Content-Type: text/html;charset=UTF-8\r\n";
-	if(send(sock, content_type, strlen(content_type), 0) <= 0)
+	if(send(sock, content_type, strlen(content_type), 0) < 0)
 	{
-		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		return 2;
 	}
-	if(send(sock, "\r\n", 2, 0) <= 0)
+	if(send(sock, "\r\n", 2, 0) < 0)
 	{
 		print_log(strerror(errno), FATAL, __FILE__, __LINE__);
 		return 3;
@@ -251,21 +250,20 @@ static int send_file(int sock, const char* path, ssize_t size)
 		return -1;
 	}
 
-	if(send(sock, "HTTP/1.0 200 OK\r\n", 17, 0) <= 0)
+	if(send(sock, "HTTP/1.0 200 OK\r\n", 17, 0) < 0)
 	{
 		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
 		close(fd);
 		return -2;
 	}
 
-	if(send(sock, "\r\n", 2, 0) <= 0) //bug:挂在第二次send
+	if(send(sock, "\r\n", 2, 0) < 0) //第二次send失败会收到SIGPIPE
 	{
-		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
 		close(fd);
 		return -3;
 	}
 
-	if(sendfile(sock, fd, NULL, size) <= 0)
+	if(sendfile(sock, fd, NULL, size) < 0)
 	{
 		print_log(strerror(errno), ERROR, __FILE__, __LINE__);
 		close(fd);
@@ -290,7 +288,6 @@ int request_handle(int sock)
 	ssize_t size = read_line(sock, line, sizeof(line));//读一行
 	if(size <= 0)
 	{
-		print_log("request error", ERROR, __FILE__, __LINE__);
 		close(sock);
 		return 1;
 	}
