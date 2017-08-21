@@ -25,8 +25,9 @@ function Start()
 	cnt=$(grep -E '^CNT' $CONF | awk -F: '{print $2}')
 	proccnt=$(grep -E '^PROCCNT' $CONF | awk -F: '{print $2}')
 	$BIN $ip $port $cnt $proccnt
+	usleep 1000
 	pid=`pidof $BIN_NAME`
-	printf "start success! pid is $pid\n"
+	printf "start success! httpd is runing, pid is $pid\n"
 }
 
 function Stop()
@@ -38,7 +39,7 @@ function Stop()
 	fi
 	
 	killall $BIN_NAME
-	printf "stop success! httpd is stoped. pid is $pid\n"
+	printf "stop success! httpd is stoped, pid is $pid\n"
 }
 
 #检查命令行参数
