@@ -46,7 +46,6 @@ struct co_epoll_res *co_epoll_res_alloc( int n )
 	ptr->events = (struct epoll_event*)calloc( 1,n * sizeof( struct epoll_event ) );
 
 	return ptr;
-
 }
 void co_epoll_res_free( struct co_epoll_res * ptr )
 {
