@@ -760,12 +760,14 @@ stCoRoutineEnv_t *co_get_curr_thread_env()
 	return g_arrCoEnvPerThread[ GetPid() ];
 }
 
+/* 事件发生后执行的函数,切换回之前的协程，以返回阻塞的协程api */
 void OnPollProcessEvent( stTimeoutItem_t * ap )
 {
 	stCoRoutine_t *co = (stCoRoutine_t*)ap->pArg;
 	co_resume( co );
 }
 
+/* 事件发生后执行的函数,将事件从epoll抽象体中删除，并增加事件发生的计数 */
 void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemLink_t *active )
 {
 	stPollItem_t *lp = (stPollItem_t *)ap;
@@ -782,7 +784,6 @@ void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemL
 		RemoveFromLink<stTimeoutItem_t,stTimeoutItemLink_t>( pPoll );
 
 		AddTail( active,pPoll );
-
 	}
 }
 
@@ -931,6 +932,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
 	memset( arg.pPollItems,0,nfds * sizeof(stPollItem_t) );
 
+	/* 设置事件发生后执行的函数:进入之前阻塞api的协程中继续执行 */
 	arg.pfnProcess = OnPollProcessEvent;
 	arg.pArg = GetCurrCo( co_get_curr_thread_env() );
 	
@@ -941,6 +943,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 		arg.pPollItems[i].pSelf = arg.fds + i;
 		arg.pPollItems[i].pPoll = &arg;
 
+		/* 事件发生后执行的函数,将事件从epoll抽象体中删除，并增加事件发生的计数 */
 		arg.pPollItems[i].pfnPrepare = OnPollPreparePfn;
 		struct epoll_event &ev = arg.pPollItems[i].stEvent;
 
@@ -966,6 +969,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
 
 	//3.add timeout
+	/* 将事件集合添加到超时监控列表中 */
 	unsigned long long now = GetTickMS();
 	arg.ullExpireTime = now + timeout;
 	int ret = AddTimeout( ctx->pTimeout,&arg,now );
@@ -986,8 +990,10 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 		return -__LINE__;
 	}
 
+	/*4. 执行协程切换，回到上级协程 */
 	co_yield_env( co_get_curr_thread_env() );
 
+	/*5. 当事件到来或者超时后，回到这里。将事件从超时列表和epoll抽象体中删除，返回事件发生的个数 */
 	RemoveFromLink<stTimeoutItem_t,stTimeoutItemLink_t>( &arg );
 	for(nfds_t i = 0;i < nfds;i++)
 	{
