@@ -26,20 +26,61 @@ struct stCoSpec_t
 {
 	void *value;
 };
+
+struct stStackMem_t
+{
+	stCoRoutine_t* occupy_co;
+	int stack_size;
+	char* stack_bp; //stack_buffer + stack_size
+	char* stack_buffer;
+
+};
+
+struct stShareStack_t
+{
+	unsigned int alloc_idx;
+	int stack_size;
+	int count;
+	stStackMem_t** stack_array;
+};
+
+/* 协程控制块：存储一个协程运行所需要的所有信息, 类似于进程控制块PCB*/
 struct stCoRoutine_t
 {
+	/* 指向全局协程的运行环境 */
 	stCoRoutineEnv_t *env;
+
+	/* 指向协程调用的函数 */
 	pfn_co_routine_t pfn;
+
+	/* 参数 */
 	void *arg;
-	//ucontext_t ctx;
+
+	/* 协程切换的上下文信息 */
 	coctx_t ctx;
+
+	/* 下面5个保存一些状态信息 */
+	/* 标记协程是否开始或结束 */
 	char cStart;
 	char cEnd;
-	stCoSpec_t aSpec[1024];
+	/* 是否为主协程， 主协程负责协程监听事件和唤醒工作协程 */
 	char cIsMain;
 	char cEnableSysHook;
+	char cIsShareStack;
 
-	char sRunStack[ 1024 * 128 ];
+	void *pvEnv;
+
+	//char sRunStack[ 1024 * 128 ];
+	/* 协程运行栈 */
+	stStackMem_t* stack_mem;
+
+
+	//save satck buffer while confilct on same stack_buffer;
+	char* stack_sp; 
+	unsigned int save_size;
+	char* save_buffer;
+
+	stCoSpec_t aSpec[1024];
 
 };
 

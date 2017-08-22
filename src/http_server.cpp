@@ -81,7 +81,7 @@ static void *readwrite_routine( void *arg )
 			pf.events = (POLLIN|POLLERR|POLLHUP);
 			co_poll( co_get_epoll_ct(),&pf,1,1000);
 
-			//处理接收到的连接
+			/* 处理接收到的连接 */
 			request_handle(fd);
 			break;
 		}
